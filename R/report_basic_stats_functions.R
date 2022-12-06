@@ -328,12 +328,8 @@ filter_t <- function(t){
 annotate_mut_better <- function(res_locus, solve_th = 98){
 
   res_locus$mut_max_cut = res_locus$mut_max
-  res_locus = res_locus %>% separate(mut_max_cut, c("A", "B", "C"), sep="\\+")
-  #res_locus = within(res_locus, mm<-data.frame(do.call('rbind', strsplit(as.character(res_locus$mut_max), '+', fixed=TRUE))))
+  res_locus = res_locus %>% separate(mut_max_cut, c("mm1", "mm2", "mm3"), sep="\\+")
   res_locus$mm0 = 'ref'
-  res_locus$mm1 = res_locus$A
-  res_locus$mm2 = res_locus$B
-  res_locus$mm3 = res_locus$C
   res_locus[res_locus$mm1 == 'ref','mm1'] = NA
 
 
@@ -605,7 +601,7 @@ make_dumres_locus_m_onlyell_plot <- function(res1samp){
   return(p)
 }
 
-res_find_nSVs <- function(res_f, overlap_mode, length_limit_bp = 20000){
+res_find_sSVs <- function(res_f, overlap_mode, length_limit_bp = 20000){
 
   res_f_plus = res_f
 
@@ -678,7 +674,6 @@ enrich_res_with_info <- function(res_f, cure_threshold_pct = 98){
 
 plot_one_locus_v1 <- function(res, start){
 
-  library(reshape2)
   res_one_locus = res[res$start == start,]
 
   res_one_locus = within(res_one_locus, mm<-data.frame(do.call('rbind', strsplit(as.character(res_one_locus$mut_max), '+', fixed=TRUE))))
@@ -718,8 +713,10 @@ plot_one_locus_v2 <- function(res, anc, start_coord, solve_th = 98){
   # Add ancestry information
   res_locus_m_only$simplesample = sub("\\_.*","", sub("\\..*", "", res_locus_m_only$sample))
   res_locus_m_only = left_join(res_locus_m_only, anc, by='simplesample')
+  res_locus_m_only =   within(res_locus_m_only,    mm0 <-    factor(mm0, levels=c('ref','Contig-break','Unresolved')))
+  
   res_locus_m_only = res_locus_m_only[with(res_locus_m_only, order(mm0, mm1,mm2, mm3, ANC)),]
-
+  
   # Determine x order
   y_order = data.frame(sample = res_locus_m_only$sample, n = 1:length(res_locus_m_only$sample))
 
@@ -729,17 +726,45 @@ plot_one_locus_v2 <- function(res, anc, start_coord, solve_th = 98){
 
 
   res_locus_melt$width = 1
-  widthval = 0.3
+  widthval = 0.5
   res_locus_melt[res_locus_melt$variable=='mm0', ]$width = widthval
   res_locus_melt[res_locus_melt$variable=='mm1', ]$width = widthval
   res_locus_melt[res_locus_melt$variable=='mm2', ]$width = widthval
   res_locus_melt[res_locus_melt$variable=='mm3', ]$width = widthval
+  
+  res_locus_melt[is.na(res_locus_melt$value),'value'] = 'NA'
+  
 
-  cbPalette <- (c("red", 'blue', 'green', 'gray'))
+  color_vals = list(
+    'AMR' = '#671128',
+    'AFR' = '#F7D462',
+    'EAS' = '#7B8028',
+    'EUR' = '#3E89A7',
+    'SAS' = '#8663A7',
+    'hg38' = '#E86BA5',
+    'Unresolved' = '#D3D3D3',
+    'Contig-break' = '#BEBDBD',
+    'ref' = '#514B47',
+    'inv' = '#4D9E47',
+    'del' = '#D14D2A',
+    'dup' = '#529FD5',
+     'NA' = '#FFFFFF'
+  )
+  
 
-  outplot = ggplot(res_locus_melt) + geom_tile(aes(y=n, x=variable, fill=value, width=width), color='black', height=1) +
+  color_vals = color_vals[names(color_vals) %in% unique(res_locus_melt$value)]
+  
+  res_locus_melt$variable <- with(res_locus_melt,factor(variable,levels = c('ANC','mm0','mm1','mm2','mm3')))
+  res_locus_melt$plotcolor = as.character(color_vals[res_locus_melt$value])
+  res_locus_melt =   within(res_locus_melt,    value <-    factor(value, levels=names(color_vals)))
+  res_locus_melt[is.na(res_locus_melt$value),'value'] = 'NA'
+  
+  outplot = ggplot(res_locus_melt) + 
+    geom_tile(aes(x=variable, y=n, fill=value, width=width), color='black', height=1) +
+    scale_fill_manual(values=as.character(color_vals)) +
     scale_y_discrete(labels = sample, breaks=1:length(res_locus_melt$sample)) +
-    labs(title=start_coord)
+    scale_x_discrete(labels = c('Ancestry','Ref','Mut #1','Mut #2','Mut #3')) +
+    labs(title=start_coord, x='')
 
   print(outplot)
 
@@ -758,7 +783,7 @@ plot_overview_n_mut <- function(res_f, sort_by_ref=F){
   if (sort_by_ref){
     y_order = res_sum2[order(res_sum2$failed_call_ref),c('seqname','start', 'end')]
   } else {
-    y_order = res_sum[order(res_sum$failed_call),c('seqname','start', 'end')]
+    y_order = res_sum[order(res_sum$failed_call, res_sum$start),c('seqname','start', 'end')]
   }
 
   #browser()
@@ -781,21 +806,25 @@ plot_overview_n_mut <- function(res_f, sort_by_ref=F){
 
 
 
+  chr_band_dict = unique(res_f[,c('seqname','start','end','band', 'width_orig')])
+  chr_band_dict$displayed_name = paste0(chr_band_dict$band, ' (', round(chr_band_dict$width_orig / 1000, 0), 'kbp)')
+  row.names(chr_band_dict) = chr_band_dict$start#paste(chr_band_dict$seqname, chr_band_dict$start, chr_band_dict$end, sep='-')
+  sorted_display_names = chr_band_dict[levels(res_f$start_fact),'displayed_name']
+
+
   p = ggplot(res_f) + geom_bar(aes(y=start_fact, fill=resi)) +
     scale_fill_manual(values=cbPalette, name='# Sequential Mutations') +
     theme_bw() +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    scale_x_discrete(labels = paste(y_order$seqname, y_order$start, y_order$end, sep='-')) +
-    labs(x='', y='# Samples')
+
+    scale_y_discrete(labels = sorted_display_names) +
+    scale_x_continuous(breaks = c(seq(0,length(unique(res_f$sample)), 20), length(unique(res_f$sample)), 20)) +
+    labs(x='Number of samples', y='Genomic locus')
 
   print(p)
 
   return(list(p, start_order))
 }
 
-library(pheatmap)
-library(RColorBrewer)
-library(viridis)
 
 table_sort_and_prep <- function(table, sv_orders_link){
   svo = read.table(sv_orders_link, header=F, sep='\t')
@@ -828,13 +857,17 @@ table_sort_and_prep <- function(table, sv_orders_link){
   return(table2)
 }
 
-make_inferno_heatmap <- function(res_plus, solve_th, process_all = F){
-  sv_orders_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/17-interesting/plot/sv_orders2.txt'
+second.word <- function(my.string){
+  unlist(strsplit(my.string, "-"))[2]
+}
 
-  # Makes resp2, a subset of 'res' which contains only locations in which nsvs have bres_locus_meltn sres_locus_meltn.
+make_inferno_heatmap <- function(res_plus, solve_th, process_all = F){
+
+  sv_orders_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/17-interesting/plot/sv_orders2.txt'
+  # Makes resp2, a subset of 'res' which contains only locations in which ssvs have bres_locus_meltn sres_locus_meltn.
   if (process_all == F){
-    resp2 = res_plus[res_plus$start %in% unique(nsvs$start),]
-  } else {
+    resp2 = res_plus[res_plus$start %in% unique(ssvs$start),]
+  } else if (process_all == T){
     resp2 = res_plus
   }
   # Add a whole lot of annotation to resp2.
@@ -846,6 +879,7 @@ make_inferno_heatmap <- function(res_plus, solve_th, process_all = F){
   if (process_all){
     return(list(resp2, resp2))
   }
+
   # Make a table.
   table = as.data.frame(t(as.data.frame.matrix(table(resp2$region, resp2$mut_plot))))
 
@@ -861,11 +895,14 @@ make_inferno_heatmap <- function(res_plus, solve_th, process_all = F){
 
   # Sort and prep.
   table2 = table_sort_and_prep(table, sv_orders_link)
+  table_tmp = table2
 
+  table_tmp['failed_call',] = table_tmp['Unresolved',] + table_tmp['Contig-break',]
+  table_tmp['start',] = as.numeric(sapply(colnames(table_tmp), second.word))
+  # table2 = table2[,order(as.numeric(table2['Unresolved',] + table2['Contig-break',]))]
+  # table2 = table2[,order(as.numeric(table2['Contig-break',]))]
 
-  table2 = table2[,order(as.numeric(table2['Unresolved',] + table2['Contig-break',]))]
-  table2 = table2[,order(as.numeric(table2['Contig-break',]))]
-  table2 = table2[,order(as.numeric(table2['Resolved',]), decreasing = T)]
+  table2 = table2[,order(as.numeric(table_tmp['failed_call',]), as.numeric(table_tmp['start',]), decreasing = F)]
 
   # Replace chr-start-end with band + length. Ein kleiner Exkurs...
   chr_band_dict = unique(resp2[,c('seqname','start','end','band', 'width_orig')])
@@ -878,12 +915,23 @@ make_inferno_heatmap <- function(res_plus, solve_th, process_all = F){
 
   mat_breaks = c(0,0.25,0.5,0.75,1,1.5,2,3,4,5,10,20,40, 58)
 
-  p = pheatmap((t(table2)),
-           color  = inferno(length(mat_breaks)),
-           cluster_cols = F,
-           cluster_rows = F,
-           border_color = NA,
-           breaks  = mat_breaks)
+  t3 = t(table2)
+  t4 = cbind(t3[,6:8], t3[,1:5], t3[,9:ncol(t3)])
+  t4[,1:3] = t4[,1:3] * -1
+
+
+  p = pheatmap((t4),
+               #color  = c("#FFFFFF", inferno(length(mat_breaks)-1, direction=1)),
+               color  = c("#4dd9ff","#000000", inferno(length(mat_breaks), direction=1)),
+
+               cluster_cols = F,
+               cluster_rows = F,
+               border_color = 'black',
+               breaks  = c(-2, -1,mat_breaks),
+               cutree_cols = 3,
+               gaps_col = c(3,3,8,17))
+
+
 
   print(p)
   return(list(p,resp2))
@@ -952,7 +1000,7 @@ evaluate <- function(res, res_test){
   retained = ci[ci$start %in% res_test$start,]
   not_retained = ci[!(ci$start %in% res_test$start),]
 
-  print(paste0('Refined/Unrefined fraction: ', round(length(unique(nsvs$start))/length(ci$start),3)))
+  print(paste0('Refined/Unrefined fraction: ', round(length(unique(ssvs$start))/length(ci$start),3)))
   print(paste0('Retained fraction: ', round(frac_retained,3)))
   print('Missing:')
   print(not_retained)

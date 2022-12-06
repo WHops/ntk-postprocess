@@ -6,90 +6,116 @@ library(stringr)
 library(ggplot2)
 library(tidyr)
 library(cowplot)
+library(pheatmap)
+library(RColorBrewer)
+library(viridis)
+library(patchwork)
+library(ggplotify)
+library(reshape2)
 
 source('report_basic_stats_functions.R')
 
 
-
+# Define links
 res_link = find_reslink(twenty=F)
 ancestry_file = '/Users/hoeps/Desktop/desktop_31_july_2022/pics_20_selected/ancestries.tsv'
 
+# Hardcoded parameters
 ape_samples = c('gorGor6_hg38', 'panPan3_hg38', 'panTro6_hg38', 'ponAbe3_hg38', 'rheMac10_hg38')
 cure_threshold_pct = 98
 length_limit_bp = 10000
 make_plots = F
 overlap_mode='inv_overlap'
 
+
 # Start computing.
 res = unique(read.table(res_link, sep='\t', header=T))
+anc = read.table(ancestry_file, sep='\t', col.names = c('simplesample','ANC'))
 
+
+####### All for pre-processing the data in some ways ###########
+
+# Overlap res with other data.
 res = overlap_with_cyto_bands(res)
 res = overlap_with_core_dups(res)
 res = overlap_with_recurrent_invs(res)
 res = overlap_with_mcnvs(res)
 
-anc = read.table(ancestry_file, sep='\t', col.names = c('simplesample','ANC'))
-
+# Filter res
 res = res[res$end - res$start > length_limit_bp,]
-
 res = res[res$flip_unsure == F,]
 
+# Ummmm
 res$mut_max = unlist(lapply(res$mut_max, filter_t))
-
 res_plus = enrich_res_with_info(res, cure_threshold_pct = cure_threshold_pct)
 
 # Remove that weird sample
 res_plus = res_plus[res_plus$sample != 'HG02666_chrY_hg38',]
 
-#
+# Add info how many apes are resolved. Once that is done, remove the apes.
 res_plus = add_n_ape_resolved(res_plus, res_th = 95)
-
-# Filter #2: remove apes
 res_plus = res_plus[!(res_plus$sample %in% ape_samples),]
 
-# Drastic Eingriff here
+# If ref is already above cure threshold, we are not interested in further improvements
 res_plus[res_plus$res_ref > cure_threshold_pct,]$mut_max = 'ref'
 res_plus[res_plus$res_ref > cure_threshold_pct,]$size_mut = 0
 
-r2 = res_plus[res_plus$start==144039365,]
-head(r2)
+# find sSVs
+ssvs = res_find_sSVs(res_plus, overlap_mode=overlap_mode)
 
-if (make_plots){
-  # Add info
+####### All for pre-processing the data in some ways ###########
 
+# This function checks if the ssvs that we expect from visual inspection are here.
+evaluate(res, ssvs)
 
-  p_all = plot_overview_n_mut(res_plus, sort_by_ref = F)
+# All members of the ssvs defined earlier
+ssvs_full = res_plus[res_plus$start %in% unique(ssvs$start),]
 
-  plot_one_locus_v1(res_plus, start = 4186831)
-}
+# Find those that have eehmm. Invs?
+ssvs_full$overlap =  unlist(lapply(ssvs_full$mut_max, determine_inv_overlapper, overlap_mode = overlap_mode))
 
-
-
-
-nsvs = res_find_nSVs(res_plus, overlap_mode=overlap_mode)
-
-
-# Experiment
-
-evaluate(res, nsvs)
-
-nsvs_full = res_plus[res_plus$start %in% unique(nsvs$start),]
-nsvs_full$overlap =  unlist(lapply(nsvs_full$mut_max, determine_inv_overlapper, overlap_mode = overlap_mode))
-
-p1_start_order = plot_overview_n_mut(nsvs_full)
-p1 = p1_start_order[[1]]
+# First plot and the start order
+p1_start_order = plot_overview_n_mut(ssvs_full)
+barplot = p1_start_order[[1]]
 start_order = p1_start_order[[2]]
-plot(1,1)
 
-p2_inferno = make_inferno_heatmap(nsvs_full, solve_th = cure_threshold_pct, process_all = T)
-p2 = p2_inferno[[1]]
+p2_inferno = make_inferno_heatmap(ssvs_full, solve_th = cure_threshold_pct, process_all = F)
+heatmap = p2_inferno[[1]]
 inferno = p2_inferno[[2]]
 
+plot.1 = barplot
+plot.2 = as.ggplot(heatmap)
+
+layout = "
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+AABBBBBBBBBBBB
+##BBBBBBBBBBBB
+##BBBBBBBBBBBB
+"
 
 
+plot_combine = plot.1 + theme(panel.border = element_blank()) +
+               plot.2 + plot_layout(guides = "collect", design=layout)#widths = c(0.1,0.9), heights=c(2,1))
 
-res_locus = plot_one_locus_v2(inferno, anc, start = 1217460, solve_th = 98)
-res_locus = plot_one_locus_v2(inferno, anc, start = 144039365, solve_th = 98)
+# Consider saving.
+#ggsave(plot_combine, file = '../plots/Fig2a_raw.pdf', device='pdf', width = 20, height = 10, units='cm')
+
+#res_locus = plot_one_locus_v2(inferno, anc, start = 1217460, solve_th = 98)
+# res_locus = plot_one_locus_v2(inferno, anc, start = 144039365, solve_th = 98)
 res_locus = plot_one_locus_v2(inferno, anc, start = 119747586, solve_th = 98)
 res_locus = plot_one_locus_v2(inferno, anc, start = 4186831, solve_th = 98)
 
@@ -121,8 +147,8 @@ if (F){
 
 }
 if (F){
-plot_overview_n_mut(res_plus[res_plus$start %in% unique(nsvs$start),])
-#uniqs = nsvs %>% group_by(start) %>% slice(1)
+plot_overview_n_mut(res_plus[res_plus$start %in% unique(ssvs$start),])
+#uniqs = ssvs %>% group_by(start) %>% slice(1)
 #uniqs = uniqs[(uniqs$end - uniqs$start) > length_limit_bp,]
 
 # Filter #8: branch out from #7
@@ -147,5 +173,14 @@ res_nobreak = res[(res$exceeds_x == F) &  (res$exceeds_y == F),]
 
 
 
+# Unused
+
+# if (make_plots){
+#   # Barplot summarizing everything
+#   p_bars = plot_overview_n_mut(res_plus, sort_by_ref = F)
+#
+#   # Individual plot
+#   plot_one_locus_v1(res_plus, start = 4186831)
+# }
 
 
