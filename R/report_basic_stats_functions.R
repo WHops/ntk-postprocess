@@ -554,6 +554,8 @@ find_reslink <- function(twenty=F){
   res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/17-interesting/calls/calls_15aug/integrate_chm13/all_plus_chm13.tsv'
   res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/17-interesting/calls/calls_15aug/integrate_chm13/integrate_new_chr15/all_all_chm13_aug23.tsv'
   res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/17-interesting/calls/calls_15aug/integrate_chm13/integrate_new_chr15/exchange_chr22/all3_aug25.tsv'
+  
+  res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper_2/first_run/all.tsv'
   #res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/figures/Fig3/sotos/ship/calls_origonly.tsv'
 
   if (twenty){
@@ -929,7 +931,7 @@ make_inferno_heatmap <- function(res_plus, solve_th, process_all = F){
                border_color = 'black',
                breaks  = c(-2, -1,mat_breaks),
                cutree_cols = 3,
-               gaps_col = c(3,3,8,17))
+               gaps_col = c(3,3,8,20))
 
 
 
@@ -1037,4 +1039,30 @@ res_mut_into_sep_columns <- function(res){
   res_f[,c('mm1','mm2','mm3', 'mm', 'm1','m2','m3')] = NULL
 
   return(res_f)
+}
+
+copy_ssvs_pdf_to_local <- function(ssvs_full, link_to_remote_res, link_to_local_target, out_script, execute=F){
+  
+  ssvs_full_process = ssvs_full
+  ssvs_full_process$id <- paste(ssvs_full_process$seqname, ssvs_full_process$start, ssvs_full_process$end, sep="-")
+  
+  
+  id_cmds = paste0('rsync -R ', 
+                   link_to_remote_res, '/', unique(ssvs_full_process$id), '/*/*/*.pdf ', 
+                   link_to_remote_res, '/', unique(ssvs_full_process$id), '/*/*/*/*.pdf ', 
+                   link_to_local_target)
+  if (execute == T){
+    print('Copying ssv pdfs over...')
+    cp_count = 0
+    for (cmd in id_cmds){
+      cp_count = cp_count + 1
+      print(paste0('Copying folder ', cp_count, ' out of ', length(id_cmds)))
+      system(cmd)
+    }
+  } else {
+    print('Not executing the cp. Writing commands instead.')
+    write.table(id_cmds, file=out_script, row.names=F, col.names=F, quote=F)
+    print(paste0('Bashfile for copying written to: ', out_script))
+  }
+  
 }

@@ -21,15 +21,18 @@ res_link = find_reslink(twenty=F)
 ancestry_file = '/Users/hoeps/Desktop/desktop_31_july_2022/pics_20_selected/ancestries.tsv'
 
 # Hardcoded parameters
-ape_samples = c('gorGor6_hg38', 'panPan3_hg38', 'panTro6_hg38', 'ponAbe3_hg38', 'rheMac10_hg38')
+#ape_samples = c('gorGor6_hg38', 'panPan3_hg38', 'panTro6_hg38', 'ponAbe3_hg38', 'rheMac10_hg38')
+ape_samples = c('gorGor6', 'panPan3', 'panTro6', 'ponAbe3', 'rheMac10')
+
 cure_threshold_pct = 98
 length_limit_bp = 10000
 make_plots = F
-overlap_mode='inv_overlap'
+overlap_mode='any_overlap'#, 'inv_overlap' #'any_overlap'#
 
 
 # Start computing.
 res = unique(read.table(res_link, sep='\t', header=T))
+res = cbind(res[,4:ncol(res)], res[,1:3])
 anc = read.table(ancestry_file, sep='\t', col.names = c('simplesample','ANC'))
 
 
@@ -54,6 +57,7 @@ res_plus = res_plus[res_plus$sample != 'HG02666_chrY_hg38',]
 
 # Add info how many apes are resolved. Once that is done, remove the apes.
 res_plus = add_n_ape_resolved(res_plus, res_th = 95)
+#res_plus$n_ape_resolved = 5
 res_plus = res_plus[!(res_plus$sample %in% ape_samples),]
 
 # If ref is already above cure threshold, we are not interested in further improvements
@@ -109,16 +113,16 @@ AABBBBBBBBBBBB
 
 
 plot_combine = plot.1 + theme(panel.border = element_blank()) +
-               plot.2 + plot_layout(guides = "collect", design=layout)#widths = c(0.1,0.9), heights=c(2,1))
-
+  plot.2 + plot_layout(guides = "collect", design=layout)#widths = c(0.1,0.9), heights=c(2,1))
+plot_combine
 # Consider saving.
 #ggsave(plot_combine, file = '../plots/Fig2a_raw.pdf', device='pdf', width = 20, height = 10, units='cm')
 
 #res_locus = plot_one_locus_v2(inferno, anc, start = 1217460, solve_th = 98)
 # res_locus = plot_one_locus_v2(inferno, anc, start = 144039365, solve_th = 98)
-res_locus = plot_one_locus_v2(inferno, anc, start = 119747586, solve_th = 98)
-res_locus = plot_one_locus_v2(inferno, anc, start = 4186831, solve_th = 98)
-
+#res_locus = plot_one_locus_v2(inferno, anc, start = 119747586, solve_th = 98)
+#res_locus = plot_one_locus_v2(inferno, anc, start = 4186831, solve_th = 98)
+save_plot(outplot, filename = paste('../diagramplots/',start, '.pdf'), device='pdf', base_height = 5, base_width = 7)
 # for (start in unique(inferno$start)){
 #
 #   outplot = plot_one_locus_v2(inferno, anc, start = start, solve_th = 98)[[1]]
@@ -127,49 +131,56 @@ res_locus = plot_one_locus_v2(inferno, anc, start = 4186831, solve_th = 98)
 #   print('sup')
 # }
 
+#ssv_folders_to_get = unique(paste(ssvs_full[,c('')]))
+
+link_to_remote_res = '~/cluster21/g/korbel/hoeps/projects/nahr/ntk_interesting_loci/ntk-scan-snakemake/res'
+link_to_local_target = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper_2/first_run/res'
+out_script = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper_2/first_run/copy_command_auto.sh'
+
+copy_ssvs_pdf_to_local(ssvs_full, link_to_remote_res, link_to_local_target, out_script, execute = F)
 
 
-
-
-
-
-
-
-
-
-
-
-
-if (F){
-  library(cowplot)
-  save_plot(p1, filename = '2a_bars_2.pdf', device='pdf', base_height = 10, base_width = 7)
-  save_plot(p2, filename = '2b.pdf_2.pdf', device='pdf', base_height = 10, base_width = 12)
-
-}
-if (F){
-plot_overview_n_mut(res_plus[res_plus$start %in% unique(ssvs$start),])
-#uniqs = ssvs %>% group_by(start) %>% slice(1)
-#uniqs = uniqs[(uniqs$end - uniqs$start) > length_limit_bp,]
-
-# Filter #8: branch out from #7
-
-# Filter #9: branch from #8
-
-
-
-# Filter #10: branch from $9
-a = uniqs[c('seqname','start','end')]
-
-# Filter #11
-res_nobreak = res[(res$exceeds_x == F) &  (res$exceeds_y == F),]
-
-
-# Make x-order
-# res = (res %>% group_by(start) %>% mutate(missing = n_asms - length(result)))
-
-
-
-}
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# if (F){
+#   library(cowplot)
+#   save_plot(p1, filename = '2a_bars_2.pdf', device='pdf', base_height = 10, base_width = 7)
+#   save_plot(p2, filename = '2b.pdf_2.pdf', device='pdf', base_height = 10, base_width = 12)
+# 
+# }
+# if (F){
+# plot_overview_n_mut(res_plus[res_plus$start %in% unique(ssvs$start),])
+# #uniqs = ssvs %>% group_by(start) %>% slice(1)
+# #uniqs = uniqs[(uniqs$end - uniqs$start) > length_limit_bp,]
+# 
+# # Filter #8: branch out from #7
+# 
+# # Filter #9: branch from #8
+# 
+# 
+# 
+# # Filter #10: branch from $9
+# a = uniqs[c('seqname','start','end')]
+# 
+# # Filter #11
+# res_nobreak = res[(res$exceeds_x == F) &  (res$exceeds_y == F),]
+# 
+# 
+# # Make x-order
+# # res = (res %>% group_by(start) %>% mutate(missing = n_asms - length(result)))
+# 
+# 
+# 
+# }
 
 
 
