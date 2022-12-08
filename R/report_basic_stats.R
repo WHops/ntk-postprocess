@@ -12,9 +12,17 @@ library(viridis)
 library(patchwork)
 library(ggplotify)
 library(reshape2)
-
+library(dplyr)
 source('report_basic_stats_functions.R')
 
+ssv_starts = c( 135571499, 154106432 , 49223962,  56758523 , 17939968,
+                20998524 , 54689990 ,  7009751 , 35983478 , 37739530 ,
+                43203350 , 14200886  ,21003474  ,28206731 , 72044607 ,
+                82231548 , 84256360  ,18581382 ,  4186831 , 89481973 ,
+                45338205 , 87850116 , 37623508  , 5735431 ,102392422 ,
+                143470184  ,72293822 , 17456276 ,195515228 ,103543499 ,
+                108148088 ,109662781, 119747586,12830558 ,207485628,
+                20991472)
 
 # Define links
 res_link = find_reslink(twenty=F)
@@ -35,6 +43,26 @@ res = unique(read.table(res_link, sep='\t', header=T))
 res = cbind(res[,4:ncol(res)], res[,1:3])
 anc = read.table(ancestry_file, sep='\t', col.names = c('simplesample','ANC'))
 
+# One more try. What if we exclude everything that has not got any resolution? 
+res = res[!(res$sample %in% ape_samples),]
+res = res[res$sample != 'T2T',]
+res2 =res %>% group_by(start) %>% mutate(n_fixed = (sum(res_max > cure_threshold_pct)))
+res3 = res[res2$n_fixed > 0,]
+
+# Stuff that got fixed by at least one non-ref SV. 
+res_nonref = res %>% group_by(start) %>% mutate(n_nonref = (sum((res_max > cure_threshold_pct) & (mut_max != 'ref')) ))
+res4 = res[res_nonref$n_nonref == 0,]
+
+# Stuff that has no contig break in at least 50% of cases.
+res_nonref = res %>% group_by(start) %>% mutate(n_exceeds = (sum( exceeds_y)))
+res_nonref2 = res[res_nonref$n_exceeds < 55,]
+
+mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/all_mcnvs_merged_plus25pct.bed'
+mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/all_mcnvs_merged_minus25pct.bed'
+mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/all_mcnvs_merged.bed'
+
+mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/borders_only.bed'
+report_enrichment_stats_mcnv(res3, ssv_starts, mcnv_link, middle_only = T)
 
 ####### All for pre-processing the data in some ways ###########
 
@@ -43,6 +71,9 @@ res = overlap_with_cyto_bands(res)
 res = overlap_with_core_dups(res)
 res = overlap_with_recurrent_invs(res)
 res = overlap_with_mcnvs(res)
+
+
+
 
 # Filter res
 res = res[res$end - res$start > length_limit_bp,]

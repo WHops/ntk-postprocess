@@ -1,4 +1,50 @@
+report_enrichment_stats_mcnv <- function(res_f, ssv_starts, mcnv_link, middle_only = F){
+  
+  library(dplyr)
+  
+  overlap_tmp_link = 'mcnv_overlappers.bed'
+  bedtools_link = '/usr/local/bin/bedtools'
+  res_tmp_link = 'res_tmp.tmp'
+  
+  res_f$oldstart = res_f$start
+  if (middle_only == T){
+    res_f$start = as.integer(res_f$start + ((res_f$end - res_f$start) / 2))
+    res_f$end = res_f$start + 1
+  }
+  
+  # Save res table, so bedtools can work with it.
+  write.table(res_f[,1:3], res_tmp_link, sep='\t', col.names = F, row.names = F, quote = F)
+  
+  # Run bedtools to find intersections betwres_locus_meltn res and coredups
+  bed_command = paste0(bedtools_link ,' intersect -wa -a ', res_tmp_link, ' -b ', mcnv_link, ' | sort | uniq > ', overlap_tmp_link)
+  system(bed_command)
+  
+  # Load the results.
+  mcvn_overlapping_segments = read.table(overlap_tmp_link, sep='\t')
+  colnames(mcvn_overlapping_segments) = c('seqname','start','end')
+  mcvn_overlapping_segments$mcnv = T
+  
+  # Add this information to the original res directory
+  res_f = dplyr::left_join(res_f, mcvn_overlapping_segments, by=c('seqname', 'start','end'))
+  res_f[is.na(res_f$mcnv),'mcnv'] = F
+  
+  # First, normal:
+  res_uniq = res_f %>% group_by(start) %>% slice(1)
+  table1 = table(res_uniq$mcnv)
+  print(table(res_uniq$mcnv))
+  
+  # Second, ssvs:
+  res_ssvs = res_f[as.numeric(res_f$oldstart) %in% ssv_starts,]
+  res_ssvs_uniq = res_ssvs %>% group_by(start) %>% slice(1)
+  table2 = table(res_ssvs_uniq$mcnv)
+  print(table(res_ssvs_uniq$mcnv))
+  
+  print(paste0('Fraction mcnv-overlappers all: ', round((table1[2] / sum(table1)), 3)))
+  print(paste0('Fraction mcnv-overlappers ssvs: ', round((table2[2] / sum(table2)), 3)))
+  
+  print(fisher.test(matrix(c(table1[1], table2[1], table1[2], table2[2]), nrow = 2), alternative='greater'))
 
+}
 
 overlap_with_cyto_bands <- function(res){
 
@@ -385,7 +431,9 @@ turn_mut_max_into_svdf <- function(t, correction=T){
   if (t == 'ref'){
     return(F)
   }
-  strsplit(t, split='+')
+  
+  
+  strsplit(t, split='n+')
   sv_list = strsplit(t, split="\\+")[[1]]
   svdf_clump = data.frame(sv_list)
   svdf = data.frame(do.call('rbind', strsplit(as.character(svdf_clump$sv_list),'_',fixed=TRUE)))
@@ -405,6 +453,8 @@ turn_mut_max_into_svdf <- function(t, correction=T){
 
   # Iteratve over each sv
   for (i in 1:dim(svdf)[1]){
+    
+    
     # if it's an inv, complicated changes have to happen.
     if (svdf[i,'sv'] == 'inv'){
 
@@ -423,22 +473,23 @@ turn_mut_max_into_svdf <- function(t, correction=T){
     svdf[!is.na(svdf$newend),'end'] = svdf[!is.na(svdf$newend),'newend']
     svdf[!is.na(svdf$newstart),'start'] = svdf[!is.na(svdf$newstart),'newstart']
     svdf[,c('newend', 'newstart')] = NULL
+    
     # If it's del/dup, change the del coordinates.
     if (svdf[i,'sv'] == 'del'){
 
-      #start breakpoints after the del get a plus
-      svdf[(svdf$start > svdf[i,'end']) & (svdf$n > i),'start'] =
-        svdf[(svdf$start > svdf[i,'end']) & (svdf$n > i),'start'] + (svdf[i,'end'] - svdf[i,'start'])
+      #start breakpoints after the beginning of del get a plus
+      svdf[(svdf$start > svdf[i,'start']) & (svdf$n > i),'start'] =
+        svdf[(svdf$start > svdf[i,'start']) & (svdf$n > i),'start'] + (svdf[i,'end'] - svdf[i,'start'])
 
-      #end breakpoints after the del get a plus
-      svdf[(svdf$end > svdf[i,'end']) & (svdf$n > i),'end'] =
-        svdf[(svdf$end > svdf[i,'end']) & (svdf$n > i),'end'] + (svdf[i,'end'] - svdf[i,'start'])
+      #end breakpoints after the beginning of del get a plus
+      svdf[(svdf$end > svdf[i,'start']) & (svdf$n > i),'end'] =
+        svdf[(svdf$end > svdf[i,'start']) & (svdf$n > i),'end'] + (svdf[i,'end'] - svdf[i,'start'])
 
     } else if (svdf[i,'sv'] == 'dup'){
 
       # start breakpoints after the dup get a minus
-      svdf[(svdf$start >= svdf[i,'end']) & (svdf$n > i),'start'] =
-        svdf[(svdf$start >= svdf[i,'end']) & (svdf$n > i),'start'] - (svdf[i,'end'] - svdf[i,'start'])
+      svdf[(svdf$start > svdf[i,'end']) & (svdf$n > i),'start'] =
+        svdf[(svdf$start > svdf[i,'end']) & (svdf$n > i),'start'] - (svdf[i,'end'] - svdf[i,'start'])
 
       # end breakpoints after thhe dup get a minus
       svdf[(svdf$end > svdf[i,'end']) & (svdf$n > i),'end'] =
