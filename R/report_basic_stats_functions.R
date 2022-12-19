@@ -1,7 +1,50 @@
-report_enrichment_stats_mcnv <- function(res_f, ssv_starts, mcnv_link, middle_only = F){
+filter_res_t2t_flip <- function(res_f, ape_samples, keep_flip){
+  # Filter res: kick out apes, T2T, and flip_unsures
+  #res_f = res_f[!(res_f$sample %in% ape_samples),]
+  res_f = res_f[res_f$sample != 'T2T-CHM13v2.0',]
+  
+  if (!(keep_flip)){
+    res_f = res_f[res_f$flip_unsure == F,]
+  }
+  # Remove that weird sample in case it's there...
+  res_f = res_f[res_f$sample != 'HG02666_chrY_hg38',]
+  
+  return(res_f)
+}
+
+
+
+overlap_res_with_cyto_cds_mcnvs_recInvs <- function(res_f){
+  # Overlap res with other data.
+  res_f = overlap_with_cyto_bands(res_f)
+  res_f = overlap_with_core_dups(res_f)
+  res_f = overlap_with_recurrent_invs(res_f)
+  res_f = overlap_with_mcnvs(res_f)
+  
+  return(res_f)
+}
+
+report_enrichment_stats_mcnv <- function(res_f, ssv_starts, params, middle_only = F){
+  
+  res = res_f[!(res_f$sample %in% params$ape_samples),]
+  res = res[res$sample != 'T2T',]
+  res2 =res %>% group_by(start) %>% mutate(n_fixed = (sum(res_max > params$cure_threshold_pct)))
+  res3 = res[res2$n_fixed > 0,]
+  
+  if (params$mcnv_mode == 'plus25'){
+    mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/all_mcnvs_merged_plus25pct.bed'
+  } else if (params$mcnv_mode == 'minus25'){
+    mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/all_mcnvs_merged_minus25pct.bed'
+  } else if (params$mcnv_mode == 'plus0'){
+    mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/all_mcnvs_merged.bed'
+  } else if (params$mcnv_mode == 'borders'){
+    mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/borders_only.bed'
+  } else {
+    break()
+  }
+  
   
   library(dplyr)
-  
   overlap_tmp_link = 'mcnv_overlappers.bed'
   bedtools_link = '/usr/local/bin/bedtools'
   res_tmp_link = 'res_tmp.tmp'
@@ -20,12 +63,13 @@ report_enrichment_stats_mcnv <- function(res_f, ssv_starts, mcnv_link, middle_on
   system(bed_command)
   
   # Load the results.
-  mcvn_overlapping_segments = read.table(overlap_tmp_link, sep='\t')
-  colnames(mcvn_overlapping_segments) = c('seqname','start','end')
-  mcvn_overlapping_segments$mcnv = T
+  mcnv_overlapping_segments = read.table(overlap_tmp_link, sep='\t')
+  colnames(mcnv_overlapping_segments) = c('seqname','start','end')
+  mcnv_overlapping_segments$mcnv = T
   
   # Add this information to the original res directory
-  res_f = dplyr::left_join(res_f, mcvn_overlapping_segments, by=c('seqname', 'start','end'))
+  res_f$mcnv = NULL
+  res_f = dplyr::left_join(res_f, mcnv_overlapping_segments, by=c('seqname', 'start','end'))
   res_f[is.na(res_f$mcnv),'mcnv'] = F
   
   # First, normal:
@@ -139,12 +183,12 @@ overlap_with_mcnvs <- function(res){
   system(bed_command)
 
   # Load the results.
-  mcvn_overlapping_segments = read.table(overlap_tmp_link, sep='\t')
-  colnames(mcvn_overlapping_segments) = c('seqname','start','end')
-  mcvn_overlapping_segments$mcnv = T
+  mcnv_overlapping_segments = read.table(overlap_tmp_link, sep='\t')
+  colnames(mcnv_overlapping_segments) = c('seqname','start','end')
+  mcnv_overlapping_segments$mcnv = T
 
   # Add this information to the original res directory
-  res = dplyr::left_join(res, mcvn_overlapping_segments, by=c('seqname', 'start','end'))
+  res = dplyr::left_join(res, mcnv_overlapping_segments, by=c('seqname', 'start','end'))
   res[is.na(res$mcnv),'mcnv'] = F
 
   return(res)
@@ -607,6 +651,8 @@ find_reslink <- function(twenty=F){
   res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/17-interesting/calls/calls_15aug/integrate_chm13/integrate_new_chr15/exchange_chr22/all3_aug25.tsv'
   
   res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper_2/first_run/all.tsv'
+  #res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper_2/second_run/all.tsv'
+  
   #res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/figures/Fig3/sotos/ship/calls_origonly.tsv'
 
   if (twenty){
@@ -654,7 +700,7 @@ make_dumres_locus_m_onlyell_plot <- function(res1samp){
   return(p)
 }
 
-res_find_sSVs <- function(res_f, overlap_mode, length_limit_bp = 20000){
+res_find_sSVs <- function(res_f, overlap_mode, ape_samples, length_limit_bp = 20000){
 
   res_f_plus = res_f
 
@@ -680,9 +726,12 @@ res_find_sSVs <- function(res_f, overlap_mode, length_limit_bp = 20000){
   return(res_cure_interest)
 }
 
-enrich_res_with_info <- function(res_f, cure_threshold_pct = 98){
+add_sizemut_invinvolved_etal_to_res <- function(res_f, cure_threshold_pct = 98){
+  
+  res_f$mut_max = unlist(lapply(res_f$mut_max, filter_t))
+  
   res_f = excuse_missing_samples(res_f)
-  dynamic_solve_th = F
+
   # Info #1
   res_f$size_mut = lengths(regmatches(res_f$mut_max, gregexpr("\\+", res_f$mut_max))) + 1
 
@@ -693,16 +742,8 @@ enrich_res_with_info <- function(res_f, cure_threshold_pct = 98){
   res_f[res_f$mut_max == 'ref',]$size_mut = 0
 
   # Info #4
-  # res_f$cured = res_f$res_f_max >= cure_threshold_pct
-  if (dynamic_solve_th){
-    res_f$cure_th = (1 - ((res_f$grid_compression / res_f$width_orig) * 1.5)) * 100
-    res_f$cured = res_f$res_ref < res_f$cure_th & res_f$res_max >= res_f$cure_th
-  } else {
-    res_f$cured = res_f$res_max >= cure_threshold_pct # & res_f$res_ref < cure_threshold_pct
-
-  }
-
-
+  res_f$cured = res_f$res_max >= cure_threshold_pct
+  
   # Info #5
   res_f$n_inv_involved = str_count(res_f$mut_max, 'inv')
   res_f$n_del_involved = str_count(res_f$mut_max, 'del')
@@ -711,10 +752,11 @@ enrich_res_with_info <- function(res_f, cure_threshold_pct = 98){
   # Info #6
   res_f$inv_involved = res_f$n_inv_involved > 0
 
-  #
+  # Info #7
   res_f$onlydels = res_f$n_del_involved == res_f$mut_max
   res_f$onlydups = res_f$n_dup_involved == res_f$mut_max
 
+  # Info #8
   res_f$res_fult = 'NA'
   res_f[res_f$res_max < cure_threshold_pct, 'result'] = 'Not explained'
   res_f[res_f$cured==T, 'result'] = res_f[res_f$cured==T, 'size_mut']
@@ -753,11 +795,12 @@ plot_one_locus_v1 <- function(res, start){
 }
 
 
-plot_one_locus_v2 <- function(res, anc, start_coord, solve_th = 98){
+plot_one_locus_v2 <- function(res_f, anc, start_coord, solve_th = 98){
 
 
+  res_f = annotate_mut_better(res_f)
   # choose sample
-  res_locus = res[res$start == start_coord,]
+  res_locus = res_f[res_f$start == start_coord,]
   #res_locus = annotate_mut_better(res_locus, solve_th = solve_th)
 
   # Process
@@ -918,11 +961,12 @@ make_inferno_heatmap <- function(res_plus, solve_th, process_all = F){
 
   sv_orders_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/17-interesting/plot/sv_orders2.txt'
   # Makes resp2, a subset of 'res' which contains only locations in which ssvs have bres_locus_meltn sres_locus_meltn.
-  if (process_all == F){
-    resp2 = res_plus[res_plus$start %in% unique(ssvs$start),]
-  } else if (process_all == T){
-    resp2 = res_plus
-  }
+  # if (process_all == F){
+  #   resp2 = res_plus[res_plus$start %in% unique(ssvs$start),]
+  # } else if (process_all == T){
+  # }
+  resp2 = res_plus
+  
   # Add a whole lot of annotation to resp2.
   resp2 = annotate_mut_better(resp2, solve_th = solve_th)
   resp2[resp2$mm0=='Contig-break',c('mm1','mm2','mm3')] = NA
@@ -993,7 +1037,7 @@ make_inferno_heatmap <- function(res_plus, solve_th, process_all = F){
 
 
 
-add_n_ape_resolved <- function(res_f, res_th = 98){
+add_n_ape_resolved <- function(res_f, ape_samples, res_th = 98){
 
   res_ape = res_f[res_f$sample %in% ape_samples,]
   res_ape$ape_resolve = F
