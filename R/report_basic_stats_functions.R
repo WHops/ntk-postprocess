@@ -650,8 +650,8 @@ find_reslink <- function(twenty=F){
   res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/17-interesting/calls/calls_15aug/integrate_chm13/integrate_new_chr15/all_all_chm13_aug23.tsv'
   res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/17-interesting/calls/calls_15aug/integrate_chm13/integrate_new_chr15/exchange_chr22/all3_aug25.tsv'
   
-  res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper_2/first_run/all.tsv'
-  #res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper_2/second_run/all.tsv'
+  #res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper_2/first_run/all.tsv'
+  res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper_2/second_run/all.tsv'
   
   #res_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/figures/Fig3/sotos/ship/calls_origonly.tsv'
 
