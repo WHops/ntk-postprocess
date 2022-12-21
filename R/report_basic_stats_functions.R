@@ -170,7 +170,8 @@ overlap_with_recurrent_invs <- function(res){
 
 overlap_with_mcnvs <- function(res){
 
-  mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/all_mcnvs_merged_plus50.bed'
+  #mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/all_mcnvs_merged_plus50.bed'
+  mcnv_link = '/Users/hoeps/PhD/projects/nahrcall/analyses_paper/mcnv_enrichment/data/all_mcnvs_merged_plus25pct.bed'
   overlap_tmp_link = 'mcnv_overlappers.bed'
   bedtools_link = '/usr/local/bin/bedtools'
   res_tmp_link = 'res_tmp.tmp'
@@ -1016,7 +1017,6 @@ make_inferno_heatmap <- function(res_plus, solve_th, process_all = F){
   t4 = cbind(t3[,6:8], t3[,1:5], t3[,9:ncol(t3)])
   t4[,1:3] = t4[,1:3] * -1
 
-
   p = pheatmap((t4),
                #color  = c("#FFFFFF", inferno(length(mat_breaks)-1, direction=1)),
                color  = c("#4dd9ff","#000000", inferno(length(mat_breaks), direction=1)),
@@ -1024,9 +1024,9 @@ make_inferno_heatmap <- function(res_plus, solve_th, process_all = F){
                cluster_cols = F,
                cluster_rows = F,
                border_color = 'black',
-               breaks  = c(-2, -1,mat_breaks),
+               breaks  = c(-1,-0.1, mat_breaks),
                cutree_cols = 3,
-               gaps_col = c(3,3,8,20))
+               gaps_col = c(3,3,8,19))
 
 
 
@@ -1161,3 +1161,117 @@ copy_ssvs_pdf_to_local <- function(ssvs_full, link_to_remote_res, link_to_local_
   }
   
 }
+
+
+return_supp_ufo_higher <- function(res, params){
+  # Process res to get heatmap.
+  res2b = add_sizemut_invinvolved_etal_to_res(res, params$cure_threshold_pct)
+  res2a = res2b
+  res2a$overlap = unlist(lapply(res2a$mut_max, determine_inv_overlapper, overlap_mode = params$overlap_mode))
+  
+  res2a[(res2a$overlap == F) & (res2a$result %in% c('2','3')), 'result'] = '1'
+  res2a[res2a$result == '0', 'result'] = 'Ref'
+  res2a[res2a$result == '1', 'result'] = '1 SV'
+  res2a[res2a$result == '2', 'result'] = '2 SVs'
+  res2a[res2a$result == '3', 'result'] = '3 SVs'
+  res2a[res2a$result == 'Contig-break', 'result'] = 'No contiguous asm'
+  res2a[res2a$result == 'Not explained', 'result'] = 'Unexplained'
+  
+  #res2a$result = as.numeric(res2a$result)
+  
+  res3 = (res2a[,c('start','sample','result')])
+  test = melt(res3, is.vars = 'result')
+  rescast = t(as.matrix(cast(res3, start ~  sample, value.var= result)))
+  colnames(rescast) = NULL
+  
+  color_factors = factor(names(table(rescast)), levels = c('No contiguous asm', 'Unexplained','Ref','1 SV', '2 SVs', '3 SVs'))
+  
+  cols = c('#2d2e30', '#585b61', '#466299', '#8eba7f', '#edb03e', '#ed583e')
+  colors = structure(cols, names = levels(color_factors))
+  
+  # Group rows by ancestry
+  
+  anc = read.table(ancestry_file, sep='\t')
+  tt = str_split(row.names(rescast), '[.]|_',)
+  namex = unlist(map(tt, 1))
+  namex2 = data.frame(V1 = namex)
+  ancx =  left_join(namex2, anc, by='V1')
+  row_order = order(ancx$V2)
+  rescast2 = rescast[row_order,]
+  ancs =  ancx[row_order,]$V2
+  # mycolors <- newCols(length(color_factors))
+  # names(mycolors) <- color_factors
+  # mycolors <- list(category = mycolors)
+  #colors = structure(1:length(unique(res3$result)), names = unique(res3$result)) # black, red, green, blue
+  row.names(rescast2) = paste0(ancs, '___', row.names(rescast2))
+  heat = Heatmap(rescast2[,sort_order], col = colors, cluster_columns = F, cluster_rows = F,
+                 column_split = rep(1:5, as.numeric(table(res_slice$category))))
+  return(heat)
+}
+
+return_supp_ufo_lower <- function(res, params){
+  # THIS IS FOR THE 1 ST KIND OF HEATMAP
+  res2 = add_sizemut_invinvolved_etal_to_res(res, params$cure_threshold_pct)
+  res2$overlap = unlist(lapply(res2$mut_max, determine_inv_overlapper, overlap_mode = params$overlap_mode))
+  res2[(res2$overlap == F) & (res2$result %in% c('2','3')), 'result'] = '1'
+  res2[res2$result == '0', 'result'] = 'Ref'
+  res2[res2$result == '1', 'result'] = '1 SV'
+  res2[res2$result == '2', 'result'] = '2 SVs'
+  res2[res2$result == '3', 'result'] = '3 SVs'
+  res2[res2$result == 'Contig-break', 'result'] = 'No contiguous asm'
+  res2[res2$result == 'Not explained', 'result'] = 'Unexplained'
+  
+  
+  res_add = res2 %>% group_by(start) %>% mutate(
+    n0 = sum(result=='Ref'),
+    n1 = sum(result=='1 SV'),
+    n2 = sum(result=='2 SVs'),
+    n3 = sum(result=='3 SVs'),
+    nbreak = sum(result=='No contiguous asm'),
+    nunexpl = sum(result=='Unexplained')
+  )
+  
+  res_slice = res_add %>% group_by(start) %>% slice(1)
+  
+  res_slice$category = 'None'
+  res_slice[(res_slice$n1 > 0), 'category'] = 'Simple SVs'
+  res_slice[(res_slice$n2 + res_slice$n3) > 0, 'category'] = 'sSVs'
+  res_slice[((res_slice$n1 + res_slice$n2 + res_slice$n3) == 0), 'category'] = 'Ref'
+  res_slice[((res_slice$n0 + res_slice$n1 + res_slice$n2 + res_slice$n3) == 0) & (res_slice$nbreak >= res_slice$nunexpl), 'category'] = 'No Contig ASM'
+  res_slice[((res_slice$n0 + res_slice$n1 + res_slice$n2 + res_slice$n3) == 0) & (res_slice$nbreak < res_slice$nunexpl), 'category'] = 'Unexplained SVs'
+  
+  table(res_slice$category)
+  
+  res_slice$category = factor(res_slice$category, levels=c('No Contig ASM', 'Unexplained SVs', 'Ref','Simple SVs','sSVs'))
+  sort_order = order(res_slice$category, res_slice$n0 + res_slice$n1 + res_slice$n2 + res_slice$n3, res_slice$nunexpl, decreasing = F)
+  res_plot = t(res_slice[sort_order,c('n3', 'n2', 'n1', 'n0',  'nunexpl', 'nbreak')])
+  
+  white_breaks = cumsum(as.numeric(table(res_slice$category)))
+  pheat = pheatmap(res_plot,
+                   cluster_cols = F,
+                   cluster_rows = F,
+                   gaps_col = white_breaks,
+                   color = c('#2d2e30', hcl.colors(10, "BluYl")))
+  
+  return(list(res_slice, pheat))
+}
+# Make an overview chart
+
+return_fig2a_bars <- function(res_slice){
+  cat = as.data.frame(table(res_slice$category))
+  cat$Var1 = as.character(cat$Var1)
+  cat[cat$Var1 == 'No Contig ASM', 'Var1'] = 'No contiguous asm'
+  cat$Var1 = factor(cat$Var1, levels=c('No contiguous asm', 'Unexplained SVs', 'Ref','Simple SVs','sSVs'))
+  
+  cols = c('#2d2e30', '#585b61', '#466299', '#8eba7f', '#edb03e', '#ed583e')
+  
+  
+  p = ggplot(data = cat) + geom_bar(aes(x=Var1, y=Freq, fill=Var1), stat = 'identity') + theme_bw() + 
+    labs(x='Locus group', y='# Loci') + 
+    scale_fill_manual(values = cols)
+  
+  return(p)
+  
+  #ggsave(p, file = '../plots/FigOverviewbars.pdf', device='pdf', width = 14, height = 10 , units='cm')
+}
+

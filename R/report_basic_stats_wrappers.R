@@ -3,6 +3,10 @@ wrapper_postprocess <- function(res_link, ancestry_file, params){
   # Load res and anc files
   res = unique(read.table(res_link, sep='\t', header=T))
   res = cbind(res[,4:ncol(res)], res[,1:3])
+  
+  # directly: remove bad apes. So we can forget about them. 
+  res = res[!(res$sample %in% params$bad_ape_samples),]
+  
   anc = read.table(ancestry_file, sep='\t', col.names = c('simplesample','ANC'))
   
   print(dim(res))
@@ -55,6 +59,7 @@ make_inferno_wrapper <- function(ssvs_full_f, params){
   barplot = p1_start_order[[1]]
   start_order = p1_start_order[[2]]
   
+
   p2_inferno = make_inferno_heatmap(ssvs_full_f, solve_th = params$cure_threshold_pct, process_all = F)
   heatmap = p2_inferno[[1]]
   inferno = p2_inferno[[2]]
